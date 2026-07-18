@@ -308,8 +308,7 @@ function parseEntry_(reviewText) {
   return entry;
 }
 
- * Emails the full review to yourself.
- */
+
 function emailReview_(reviewText, entry) {
   const cleanBody = reviewText.replace(/```[\s\S]*?```/g, '').trim();
   GmailApp.sendEmail(
