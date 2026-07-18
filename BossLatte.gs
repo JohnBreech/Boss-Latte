@@ -21,9 +21,9 @@
  * ============================================================
  */
 
-const SHEET_ID = '1pnFtKIvyimx8ZfCkj4zIHZcri0gpZ1Dl26pd140Hg9w';
-const MY_EMAIL = 'villaverdejohnbreech@gmail.com';
-const GEMINI_MODEL = 'gemini-3.5-flash'; // swap for whichever Gemini model you use in Axile
+const SHEET_ID = 'PASTE_YOUR_GOOGLE_SHEET_ID_HERE';
+const MY_EMAIL = 'your-email@example.com';
+const GEMINI_MODEL = 'gemini-2.0-flash'; // swap for whichever Gemini model you use in Axile
 
 const LIFE_AREAS = [
   'Academics', 'Career/Freelancing', 'Software Projects', 'Learning',
@@ -166,68 +166,73 @@ Recent score history (for trend context):
 ${historyBlock}
 
 ==========================
+TL;DR — READ THIS FIRST
+==========================
+Before anything else, output a short skimmable summary, max 6 lines
+total, no sub-bullets:
+- Overall Score: X/10 (one line, include the number and a 1-sentence verdict)
+- Biggest win this week (1 sentence)
+- Biggest miss this week (1 sentence)
+- Top priority for next week (1 sentence)
+This block must stand alone — I should be able to read only this and
+know exactly where I stand, even if I read nothing else below.
+
+==========================
 STEP 1 — WEEKLY SCORECARD
 ==========================
-Executive summary with Overall Week Score (/10), Productivity, Focus,
-Energy, Goal Alignment, Consistency scores. Then 4-8 sentences: did
-this week move me closer to my goals, or was I just busy? Where did
-my time really go? Biggest wins, biggest mistakes.
+Overall Week Score (/10), Productivity, Focus, Energy, Goal Alignment,
+Consistency scores. Then max 3 sentences on where time really went and
+whether this week moved me closer to my goals or was just "busy."
 
 ==========================
 STEP 2 — GOAL ALIGNMENT
 ==========================
-For each area, give Progress, Evidence, What's working, What's not,
-Recommended adjustments, and an Alignment score /10:
+For each area, give a 1-line Evidence note, a 1-line Recommended
+adjustment, and an Alignment score /10. Keep each area to 2 lines max,
+no separate Progress/What's working/What's not subheadings:
 ${LIFE_AREAS.join(' · ')}
 
 ==========================
 STEP 3 — TIME AUDIT
 ==========================
-Estimate hours per category. Was this allocation aligned with my
-goals? What got too much attention? What got neglected?
+Estimate hours per category in a short list. One closing sentence on
+whether the allocation was aligned with my goals.
 
 ==========================
-STEP 4 — ACCOMPLISHMENTS
+STEP 4 — ACCOMPLISHMENTS & BOTTLENECKS
 ==========================
-Major Wins, Small Wins, Momentum Builders, Hidden Wins.
+Combine these: up to 3 wins (1 line each) and up to 2 recurring
+bottlenecks, each with a 1-line fix. Do not use separate
+Major/Small/Momentum/Hidden Wins subcategories — just a flat list.
 
 ==========================
-STEP 5 — BOTTLENECK ANALYSIS
+STEP 5 — PROJECT HEALTH
 ==========================
-Recurring patterns, each with Evidence, Impact, Root cause, Fix.
+Status, risk, and next milestone for each active project, 1-2 lines
+per project. Be honest if something no longer serves my goals.
 
 ==========================
-STEP 6 — PROJECT HEALTH
+STEP 6 — NEXT WEEK PRIORITIES
 ==========================
-Status, momentum, risk, priority, next milestone for every active
-project. Be honest if something no longer serves my goals.
+Only 3-5, ranked, each with a one-line reason. This is the most
+important section — do not pad it.
 
 ==========================
-STEP 7 — NEXT WEEK PRIORITIES
-==========================
-Only 3-5, ranked, each with a one-line reason.
-
-==========================
-STEP 8 — SUGGESTED TIME BLOCKS
-==========================
-A realistic weekly schedule respecting my existing calendar. Do not
-overbook me.
-
-==========================
-STEP 9 — NEXT WEEK FOCUS
+STEP 7 — NEXT WEEK FOCUS
 ==========================
 Weekly Mission (one sharp sentence). One habit to strengthen, one to
-reduce, one to stop, one to double down on.
+reduce, one to stop, one to double down on — 1 line each.
 
 ==========================
-STEP 10 — RISKS
+STEP 8 — RISKS
 ==========================
-Likely problems next week and preventative actions.
+Up to 2 likely problems next week, each with a 1-line prevention step.
 
 ==========================
-STEP 11 — PERSONAL COACH
+STEP 9 — PERSONAL COACH
 ==========================
-Honest, encouraging closing message. Consistency beats intensity.
+Honest, encouraging closing message, max 3 sentences. Consistency
+beats intensity.
 
 ==========================
 IMPORTANT RULES
@@ -308,14 +313,84 @@ function parseEntry_(reviewText) {
   return entry;
 }
 
-
+/**
+ * Emails the full review to yourself as a styled HTML email.
+ */
 function emailReview_(reviewText, entry) {
-  const cleanBody = reviewText.replace(/```[\s\S]*?```/g, '').trim();
+  const cleanMarkdown = reviewText.replace(/```[\s\S]*?```/g, '').trim();
+  const htmlBody = markdownToEmailHtml_(cleanMarkdown, entry);
+  const plainFallback = cleanMarkdown.replace(/[#*]/g, '');
+
   GmailApp.sendEmail(
     MY_EMAIL,
     `☕ Boss Latte — Weekly Review (${entry.date}) — Score: ${entry.overallScore}/10`,
-    cleanBody
+    plainFallback,
+    { htmlBody: htmlBody }
   );
+}
+
+/**
+ * Converts the model's markdown-style review into styled HTML for email.
+ * Handles: #### / ### headers, **bold**, *** horizontal rules,
+ * "* " bullet lists, and paragraph breaks.
+ */
+function markdownToEmailHtml_(md, entry) {
+  const escapeHtml = (s) => s
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const inline = (line) => escapeHtml(line)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  const lines = md.split('\n');
+  let html = '';
+  let inList = false;
+  let inBox = false;
+
+  const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
+  const closeBox = () => { if (inBox) { html += '</div>'; inBox = false; } };
+
+  lines.forEach(raw => {
+    const line = raw.trim();
+
+    if (!line) { closeList(); return; }
+
+    if (/^={5,}$/.test(line)) { return; } // decorative ==== rule lines, skip
+    if (/^\*{3,}$/.test(line)) { closeList(); closeBox(); html += '<hr style="border:none;border-top:1px solid #E4D9C8;margin:24px 0;">'; return; }
+
+    if (/^TL;DR/i.test(line)) {
+      closeList(); closeBox();
+      html += `<div style="background:#FBF3E7;border-left:4px solid #E3A23C;border-radius:6px;padding:14px 18px 6px;margin:4px 0 20px;">`;
+      html += `<div style="font-family:Georgia,serif;color:#3A2A1D;font-weight:bold;font-size:13px;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">TL;DR</div>`;
+      inBox = true;
+      return;
+    }
+    if (/^####\s+/.test(line)) { closeList(); closeBox(); html += `<h4 style="font-family:Georgia,serif;color:#3A2A1D;margin:20px 0 8px;">${inline(line.replace(/^####\s+/, ''))}</h4>`; return; }
+    if (/^###\s+/.test(line)) { closeList(); closeBox(); html += `<h3 style="font-family:Georgia,serif;color:#3A2A1D;border-bottom:2px solid #E3A23C;padding-bottom:6px;margin:28px 0 12px;">${inline(line.replace(/^###\s+/, ''))}</h3>`; return; }
+
+    if (/^\*\s+/.test(line) || /^-\s+/.test(line)) {
+      if (!inList) { html += '<ul style="margin:8px 0;padding-left:22px;">'; inList = true; }
+      html += `<li style="margin-bottom:6px;line-height:1.5;">${inline(line.replace(/^[\*\-]\s+/, ''))}</li>`;
+      return;
+    }
+
+    closeList();
+    html += `<p style="line-height:1.6;color:#3A2A1D;margin:10px 0;">${inline(line)}</p>`;
+  });
+  closeList();
+  closeBox();
+
+  return `
+  <div style="font-family:Verdana,Arial,sans-serif;max-width:640px;margin:0 auto;background:#FBF3E7;padding:0;">
+    <div style="background:#3A2A1D;padding:24px 28px;border-radius:10px 10px 0 0;">
+      <div style="font-family:Georgia,serif;color:#F7ECDD;font-size:22px;font-weight:bold;">☕ Boss Latte</div>
+      <div style="color:#C9B49C;font-size:12px;letter-spacing:1px;text-transform:uppercase;margin-top:2px;">Weekly Strategy Review — ${entry.date}</div>
+      <div style="color:#E3A23C;font-family:Georgia,serif;font-size:28px;font-weight:bold;margin-top:10px;">${entry.overallScore} / 10</div>
+    </div>
+    <div style="background:#FFFFFF;padding:8px 28px 28px;border:1px solid #E4D9C8;border-top:none;border-radius:0 0 10px 10px;">
+      ${html}
+    </div>
+  </div>`;
 }
 
 /**
